@@ -1,0 +1,169 @@
+library(shiny)
+library(ggplot2)
+library(plotly)
+library(readr)
+library(glue)
+library(stringr)
+library(dplyr)
+library(DT)
+library(scales)
+
+movie <- read_rds(path ="movie.Rds")
+movie_clean <- read_rds(path ="movie_clean.Rds")
+
+ui <- fluidPage(
+    
+    titlePanel(title= "Blockbuster Movies from 1977-2019 Characteristics",windowTitle = "Blockbuster Movies!"),
+    
+    sidebarLayout(
+        
+        sidebarPanel(
+            
+            h3("Movies Filter"),
+            sliderInput(inputId = "year",
+                        label = "Choose the movie release year",
+                        min = 1977,
+                        max = 2019,
+                        value = 30)
+            
+           
+            
+        ),
+        
+      
+        
+        mainPanel(
+            h3("Rating/budget of film from each distributor", align = "center"),
+            selectInput(inputId = "distributor",
+                        label = "Distributor",
+                        choices = c("American International Pictures",
+                                    "Columbia Pictures", 
+                                    "Compass International Pictures",
+                                    "DreamWorks",
+                                    "Embassy Pictures",
+                                    "Fox Searchlight Pictures",
+                                    "Icon Productions",
+                                    "IFC Films",
+                                    "Lionsgate",
+                                    "Metro-Goldwyn-Mayer",
+                                    "Miramax",
+                                    "New Line Cinema",
+                                    "Orion Pictures",
+                                    "Paramount Pictures",
+                                    "Rank Film Distributors",
+                                    "Sony Pictures",
+                                    "Summit Entertainment",
+                                    "The H Collective",
+                                    "TriStar Pictures",
+                                    "Twentieth Century Fox",
+                                    "United Artists",
+                                    "Universal Pictures",
+                                    "Vestron Pictures",
+                                    "Walt Disney",
+                                    "Warner Bros."
+                        )),
+        
+            plotlyOutput(outputId = "p3"),
+            
+            
+            
+            h3("Blockbuster Movie's Genre", align= "center"),
+            numericInput(inputId = "top",
+                         label = "From Top ...",
+                         min = 1,
+                         max = 10,
+                         value = 3),
+            plotlyOutput(outputId = "p1"),
+            
+            h3("Frequency of Each Category", align = "center"),
+            plotlyOutput(outputId = "p2")
+            
+            
+            
+        )
+        
+        
+    )
+    
+  
+    
+)
+
+server <- function(input, output, session) {
+  
+        output$p1 <- renderPlotly({
+                movie_clean$rank_in_year <- as.numeric(movie_clean$rank_in_year)
+            a <- movie_clean %>%
+                filter(release_year >= input$year & rank_in_year <= input$top) %>% 
+                mutate(genre = str_replace(string = genre,pattern = "romance",replacement = "Romance")) %>%
+                select(genre, worldwide_gross) %>% 
+                na.omit(genre) %>% 
+                group_by(genre) %>% 
+                summarise(Freq = n(),
+                          Gross = mean(worldwide_gross)) %>% 
+                arrange(desc(Freq)) %>% 
+                    ggplot(aes(reorder(x= genre,Freq),
+                               y = Freq)) +
+                    geom_col(aes(fill = genre, text = glue("Genre: {genre}
+                                Freq: {Freq}
+                                Gross: {comma(Gross)}"))) +
+                    coord_flip() +
+                    theme_minimal() +
+                    labs(x = "",
+                         y = "Frequency") +
+                    theme(legend.position = "none",
+                          plot.title = element_text(face = "bold.italic"),
+                          panel.grid = element_blank())
+            
+                ggplotly(a, tooltip = "text")
+        
+    })
+    
+    output$p2 <- renderPlotly({
+        
+        b <- movie_clean %>% 
+            filter(release_year >= input$year) %>% 
+            select(release_year, mpaa_rating, imdb_rating) %>% 
+            group_by(release_year,mpaa_rating) %>% 
+            summarise(Freq = n(),
+                      IMDB = mean(imdb_rating)) %>% 
+            na.omit(movie_plot2) %>% 
+            ggplot(aes(x=release_year,y=Freq, group = mpaa_rating))+
+                geom_area(aes(col=mpaa_rating, 
+                              fill = mpaa_rating,
+                              text = glue("Year: {release_year}
+                                 Total movies: {Freq}
+                                 IMDB: {IMDB}"))) +
+                facet_wrap(facets = ~mpaa_rating, nrow = 2,ncol = 2) +
+                theme_minimal() +
+            labs(x = "Release Year",
+                 y = "Frequency") +
+            theme(legend.position = "none",
+                  panel.grid = element_blank())
+        
+            ggplotly(b, tooltip = "text")
+        
+    })
+    
+    
+    output$p3 <- renderPlotly({
+        
+        c <- movie %>% 
+            filter(release_year >= input$year) %>% 
+            ggplot(aes(x = film_budget, y = imdb_rating))+
+            geom_point(alpha=0.7) +
+            geom_point(data = movie[movie$domestic_distributor == input$distributor & movie$release_year >= input$year,],
+                       aes(text = glue("Title: {film_title}
+                               Budget: {comma(film_budget)},
+                               Rating: {imdb_rating},
+                               Year: {release_year}")),
+                       col ="red") +
+            theme_minimal() +
+            labs(x= "Budget",
+                 y= "Rating")
+        ggplotly(c, tooltip = "text")
+    })
+    
+}
+
+shinyApp(ui, server)
